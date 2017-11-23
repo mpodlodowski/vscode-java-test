@@ -35,7 +35,76 @@
                     "description": "Enable/disable the debug test code lens."
                 }
             }
-        }
+        },
+        "commands": [
+            {
+              "command": "test.explorer.refresh",
+              "title": "Refresh",
+              "icon": {
+                "light": "resources/light/refresh.svg",
+                "dark": "resources/dark/refresh.svg"
+              }
+            },
+            {
+              "command": "test.explorer.java.run.test",
+              "title": "Run Test",
+              "icon": {
+                "light": "resources/light/run.png",
+                "dark": "resources/dark/run.png"
+              }
+            },
+            {
+              "command": "test.explorer.java.debug.test",
+              "title": "Debug Test",
+              "icon": {
+                "light": "resources/light/debug.png",
+                "dark": "resources/dark/debug.png"
+              }
+            },
+            {
+              "command": "test.explorer.java.run.all",
+              "title": "Run All",
+              "icon": {
+                "light": "resources/light/run.png",
+                "dark": "resources/dark/run.png"
+              }
+            }
+          ],
+          "views": {
+            "explorer": [
+              {
+                "id": "testExplorer",
+                "name": "Test Explorer",
+                "when": "resourceLangId == 'java'"
+              }
+            ]
+          },
+          "menus": {
+            "view/title": [
+              {
+                "command": "test.explorer.refresh",
+                "when": "view == testExplorer",
+                "group": "navigation@1"
+              },
+              {
+                "command": "test.explorer.java.run.all",
+                "when": "view == testExplorer",
+                "group": "navigation@0"
+              }
+            ],
+            "view/item/context": [
+              {
+                "command": "test.explorer.java.run.test",
+                "when": "view == testExplorer",
+                "group": "testExplorer@0"
+              },
+              {
+                "command": "test.explorer.java.debug.test",
+                "when": "view == testExplorer",
+                "group": "testExplorer@1"
+              }
+            ]
+          }
     },
     "scripts": {
         "vscode:prepublish": "tsc -p ./",

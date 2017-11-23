@@ -11,6 +11,8 @@ import * as pathExists from 'path-exists';
 import * as vscode from 'vscode';
 
 import { Commands } from './commands';
+import { TestExplorer } from './testExplorer';
+import { TestNode, NodeLevel } from './testNode';
 
 const isWindows = process.platform.indexOf('win') === 0;
 const JAVAC_FILENAME = 'javac' + (isWindows?'.exe':'');
@@ -19,12 +21,37 @@ const JAVAC_FILENAME = 'javac' + (isWindows?'.exe':'');
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
     return checkJavaHome().then(javaHome => {
-        let outputChannel = vscode.window.createOutputChannel('JUnit Test Result');
+		const testExplorer = new TestExplorer(vscode.workspace.rootPath, context);
+		vscode.window.registerTreeDataProvider("testExplorer", testExplorer);
+		let outputChannel = vscode.window.createOutputChannel('JUnit Test Result');
+		let classpathCache = {};
         
-		vscode.commands.registerCommand(Commands.JAVA_RUN_TEST_COMMAND, (uri: string, classpaths: string[], suites: string[]) =>
-		 runTest(javaHome, outputChannel, classpaths, suites));           
-		vscode.commands.registerCommand(Commands.JAVA_DEBUG_TEST_COMMAND, (uri: string, classpaths: string[], suites: string[]) =>
-		 debugTest(javaHome, outputChannel, uri, classpaths, suites));
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.JAVA_RUN_TEST_COMMAND, (uri: string, classpaths: string[], suites: string[]) =>
+			runTest(javaHome, outputChannel, classpaths, suites)));           
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.JAVA_DEBUG_TEST_COMMAND, (uri: string, classpaths: string[], suites: string[]) =>
+			debugTest(javaHome, outputChannel, vscode.Uri.file(vscode.Uri.parse(uri).fsPath), classpaths, suites)));
+
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.TEST_EXPLORER_REFRESH_COMMAND, () => {
+			testExplorer.refresh();
+		}));
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.TEST_EXPLORER_RUN_TEST_COMMAND, async(node: TestNode) => {
+			const classPath = await addOrGetFromCache(classpathCache, node.workspaceFolder, resolveClassPaths);
+			const suites = resolveTestSuites(node);
+			runTest(javaHome, outputChannel, classPath, suites);
+		}));
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.TEST_EXPLORER_DEBUG_TEST_COMMAND, async(node: TestNode) => {
+			const classPath = await addOrGetFromCache(classpathCache, node.workspaceFolder, resolveClassPaths);
+			const suites = resolveTestSuites(node);
+			debugTest(javaHome, outputChannel, vscode.Uri.parse(node.workspaceFolder), classPath, suites);
+		}));
+		context.subscriptions.push(vscode.commands.registerCommand(Commands.TEST_EXPLORER_RUN_ALL_COMMAND, async () => {
+			const roots = await testExplorer.getChildren();
+			const classPath = await Promise.all([...new Set(roots.map(r => r.workspaceFolder))].map(async r => await addOrGetFromCache(classpathCache, r, resolveClassPaths)))
+										   .then(paths => paths.reduce((a, b) => a.concat(b)));
+			
+			const suites = roots.map(r => resolveTestSuites(r)).reduce((a, b) => a.concat(b));
+			runTest(javaHome, outputChannel, classPath, suites);
+		}));
     }).catch((err) => {
         vscode.window.showErrorMessage("couldn't find Java home...");
     });
@@ -70,16 +97,23 @@ function runTest(javaHome: string, outputChannel: vscode.OutputChannel, classpat
 	}
 	outputChannel.clear();
 	outputChannel.show(true);
-	outputChannel.append(cp.execSync(params.join(' ')).toString());
+	try {
+		outputChannel.append(cp.execSync(params.join(' ')).toString());
+	} catch (ex) {
+		console.log(ex);
+	}
+	
 }
 
-async function debugTest(javaHome: string, outputChannel: vscode.OutputChannel, uri: string, classpaths: string[], suites: string[]) {
+async function debugTest(javaHome: string, outputChannel: vscode.OutputChannel, uri: vscode.Uri, classpaths: string[], suites: string[]) {
 	let port = await generatePort();
 	let params = parseParams(javaHome, classpaths, suites, port);
 	if (params === null) {
 		return null;
 	}
-	const rootDir = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(vscode.Uri.parse(uri).fsPath));
+	const rootDir = vscode.workspace.getWorkspaceFolder(uri);
+	outputChannel.clear();
+	outputChannel.show(true);
 	const process = cp.exec(params.join(' '), (err, stdout) => {
 		outputChannel.append(stdout);
 	});
@@ -143,4 +177,28 @@ function checkPortInUse(port) {
 			server.close();
 		});
 	});
+}
+
+async function addOrGetFromCache(cache, key, getter) {
+	if (typeof cache[key] === 'undefined') {
+		const res = await getter(key);
+		cache[key] = res;
+		return res;
+	} else {
+		return cache[key];
+	}
+}
+
+function resolveClassPaths(workspaceFolder) {
+	return Commands.executeJavaLanguageServerCommand(Commands.JAVA_TEST_COMPUTE_RUNTIME_CLASSPATH, workspaceFolder);
+}
+
+function resolveTestSuites(node: TestNode): string[] {
+	if (node.level === NodeLevel.Class || node.level === NodeLevel.Method) {
+		return [node.fullName];
+	}
+	if (node.level === NodeLevel.Package) {
+		return node.children.map(c => c.fullName);
+	}
+	return node.children.map(c => resolveTestSuites(c)).reduce((a, b) => a.concat(b));
 }

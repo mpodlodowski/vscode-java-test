@@ -5,4 +5,10 @@
       <codeLensProvider class="com.java.junit.plugin.internal.JUnitDebugTestCodeLensProvider" order="500" />
       <codeLensProvider class="com.java.junit.plugin.internal.JUnitRunTestCodeLensProvider" order="400" />
    </extension>
+   <extension point="org.eclipse.jdt.ls.core.delegateCommandHandler">
+      <delegateCommandHandler class="com.java.junit.plugin.internal.TestDelegateCommandHandler">
+            <command id="vscode.java.test.fetchall"/>
+            <command id="vscode.java.test.runtime.classpath" />
+       </delegateCommandHandler>
+   </extension>
 </plugin>
