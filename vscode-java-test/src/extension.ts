@@ -19,10 +19,11 @@ import * as vscode from 'vscode';
 import { Commands, Configs, Constants } from './commands';
 import { JUnitCodeLensProvider } from './junitCodeLensProvider';
 import { TestResourceManager } from './testResourceManager';
-import { OutputChannel, SnippetString } from 'vscode';
+import { OutputChannel, SnippetString, ExtensionContext } from 'vscode';
 import { TestSuite, TestLevel } from './protocols';
 import { ClassPathManager } from './classPathManager';
 import { TestResultAnalyzer } from './testResultAnalyzer';
+import TelemetryReporter from 'vscode-extension-telemetry';
 
 const isWindows = process.platform.indexOf('win') === 0;
 const JAVAC_FILENAME = 'javac' + (isWindows ? '.exe' : '');
@@ -30,6 +31,7 @@ const onDidChange: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
 const testResourceManager: TestResourceManager = new TestResourceManager();
 const classPathManager: ClassPathManager = new ClassPathManager();
 const outputChannel: OutputChannel = vscode.window.createOutputChannel('Test Output');
+let telemetryReporter: TelemetryReporter;
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -45,19 +47,37 @@ export function activate(context: vscode.ExtensionContext) {
 
     checkJavaHome().then(javaHome => {
         context.subscriptions.push(vscode.commands.registerCommand(Commands.JAVA_RUN_TEST_COMMAND, (suites: TestSuite[] | TestSuite) =>
-            runTest(javaHome, suites, context.storagePath, false)));
+            withScopeAsync(() => runTest(javaHome, suites, context.storagePath, false), "Run Test")));
         context.subscriptions.push(vscode.commands.registerCommand(Commands.JAVA_DEBUG_TEST_COMMAND, (suites: TestSuite[] | TestSuite) =>
-            runTest(javaHome, suites, context.storagePath, true)));
+            withScopeAsync(() => runTest(javaHome, suites, context.storagePath, true), "Debug Test")));
         context.subscriptions.push(vscode.commands.registerCommand(Commands.JAVA_TEST_SHOW_DETAILS, (test: TestSuite) =>
-            showDetails(test)));
+            withScopeAsync(() => showDetails(test), "Show Test details")));
         classPathManager.refresh();
     }).catch((err) => {
         vscode.window.showErrorMessage("couldn't find Java home...");
     });
+
+    activateTelemetry(context);
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
+}
+
+function activateTelemetry(context: ExtensionContext) {
+    const extensionPackage = require(context.asAbsolutePath("./package.json"));
+    if (extensionPackage) {
+        const packageInfo = {
+            name: extensionPackage.name,
+            version: extensionPackage.version,
+            aiKey: extensionPackage.aiKey,
+        };
+        if (packageInfo.aiKey) {
+            telemetryReporter = new TelemetryReporter(packageInfo.name, packageInfo.version, packageInfo.aiKey);
+            telemetryReporter.sendTelemetryEvent(Constants.TELEMETRY_ACTIVATION_SCOPE, {});
+            context.subscriptions.push(telemetryReporter);
+        }
+    }
 }
 
 function checkJavaHome(): Promise<string> {
@@ -102,10 +122,10 @@ async function runTest(javaHome: string, tests: TestSuite[] | TestSuite, storage
     try {
         params = await parseParams(javaHome, classpaths, suites, storageForThisRun, port, debug);
     } catch (ex) {
-        outputChannel.append(`Exception occers while  parsing params. Details: ${ex}`);
+        logError(`Exception occers while  parsing params. Details: ${ex}`);
         rimraf(storageForThisRun, (err) => {
             if (err) {
-                outputChannel.append(`Fail to delete storage for this run. Storage path: ${err}`);
+                logError(`Fail to delete storage for this run. Storage path: ${err}`);
             }
         });
         return null;
@@ -117,11 +137,11 @@ async function runTest(javaHome: string, tests: TestSuite[] | TestSuite, storage
     const testResultAnalyzer = new TestResultAnalyzer(testList);
     const process = cp.exec(params.join(' '));
     process.on('error', (err) => {
-        outputChannel.append(`Error occured while running/debugging tests. Name: ${err.name}. Message: ${err.message}. Stack: ${err.stack}.`);
+        logError(`Error occured while running/debugging tests. Name: ${err.name}. Message: ${err.message}. Stack: ${err.stack}.`);
         throw err;
     })
     process.stderr.on('data', (data) => {
-        outputChannel.append(data.toString());
+        logError(data.toString());
         testResultAnalyzer.sendData(data.toString());
     });
     process.stdout.on('data', (data) => {
@@ -133,7 +153,7 @@ async function runTest(javaHome: string, tests: TestSuite[] | TestSuite, storage
         onDidChange.fire();
         rimraf(storageForThisRun, (err) => {
             if (err) {
-                outputChannel.append(`Failed to delete storage for this run. Storage path: ${err}`);
+                logError(`Failed to delete storage for this run. Storage path: ${err}`);
             }
         });
     });
@@ -202,7 +222,7 @@ async function parseParams(
         const classpathStr = await processLongClassPath(classpaths, separator, storagePath);
         params.push('"' + classpathStr + '"');
     } else {
-        outputChannel.append('Failed to locate test server runtime!');
+        logError('Failed to locate test server runtime!');
         return null;
     }
 
@@ -227,7 +247,7 @@ function processLongClassPath(classpaths: string[], separator: string, storagePa
     return new Promise((resolve, reject) => {
         mkdirp(path.dirname(tempFile), (err) => {
             if (err && err.code !== 'EEXIST') {
-                outputChannel.append(`Failed to create sub directory for this run. Storage path: ${err}`);
+                logError(`Failed to create sub directory for this run. Storage path: ${err}`);
                 reject(err);
             }
             const output = fs.createWriteStream(tempFile);
@@ -236,7 +256,7 @@ function processLongClassPath(classpaths: string[], separator: string, storagePa
             })
             const jarfile = archiver('zip');
             jarfile.on('error', function (err) {
-                outputChannel.append(`Failed to process too long class path issue. Error: ${err}`);
+                logError(`Failed to process too long class path issue. Error: ${err}`);
                 reject(err);
             });
             // pipe archive data to the file
@@ -256,4 +276,42 @@ function constructManifestFile(classpaths: string[]): string {
     content += extended.join(` ${os.EOL} `);
     content += os.EOL;
     return content;
+}
+
+function logError(errorMessage: string): void {
+    outputChannel.append(errorMessage);
+    if (telemetryReporter) {
+        telemetryReporter.sendTelemetryEvent(Constants.TELEMETRY_EXCEPTION_SCOPE, {
+            "message": errorMessage
+        });
+    }
+}
+
+function logUsage(props, measures): void {
+    if (telemetryReporter) {
+        telemetryReporter.sendTelemetryEvent(Constants.TELEMETRY_USAGEDATA_SCOPE, props, measures);
+    }
+}
+
+async function withScopeAsync(action, eventType) {
+    const start = new Date();
+    const eventId: string = start.getTime().toString();
+    let props = {
+        'eventId': eventId,
+        'type': eventType,
+    };
+    let measures = {};
+    try {
+        const res = await action();
+        props['status'] = 'success';
+        return res;
+    } catch (ex) {
+        props['status'] = 'fail';
+        props['exception'] = ex.toString();
+    } finally {
+        const end = new Date();
+        const duration: number = end.getTime()- start.getTime();
+        measures['duration'] = duration;
+        logUsage(props, measures);
+    }
 }
