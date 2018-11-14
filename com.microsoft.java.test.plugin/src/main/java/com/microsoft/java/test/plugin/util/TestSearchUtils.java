@@ -16,15 +16,7 @@ import com.microsoft.java.test.plugin.model.SearchTestItemParams;
 import com.microsoft.java.test.plugin.model.TestItem;
 import com.microsoft.java.test.plugin.model.TestKind;
 import com.microsoft.java.test.plugin.model.TestLevel;
-import com.microsoft.java.test.plugin.searcher.ClassSearcher;
-import com.microsoft.java.test.plugin.searcher.JUnit4TestSearcher;
-import com.microsoft.java.test.plugin.searcher.JUnit5TestSearcher;
-import com.microsoft.java.test.plugin.searcher.MethodSearcher;
-import com.microsoft.java.test.plugin.searcher.NestedClassSearcher;
-import com.microsoft.java.test.plugin.searcher.PackageSearcher;
-import com.microsoft.java.test.plugin.searcher.TestFrameworkSearcher;
-import com.microsoft.java.test.plugin.searcher.TestItemSearcher;
-import com.microsoft.java.test.plugin.searcher.TestNGTestSearcher;
+import com.microsoft.java.test.plugin.searcher.*;
 
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
@@ -68,7 +60,7 @@ import java.util.stream.Collectors;
 public class TestSearchUtils {
     private static final Map<TestLevel, TestItemSearcher[]> searcherMap;
     private static final TestFrameworkSearcher[] frameworkSearchers = new TestFrameworkSearcher[] {
-        new JUnit4TestSearcher(), new JUnit5TestSearcher(), new TestNGTestSearcher() };
+        new JUnit4TestSearcher(), new JUnit5TestSearcher(), new TestNGTestSearcher(), new SpockTestSearcher()};
 
     static {
         searcherMap = new HashMap<TestLevel, TestItemSearcher[]>();

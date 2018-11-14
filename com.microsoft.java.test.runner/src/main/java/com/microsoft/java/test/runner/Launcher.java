@@ -15,6 +15,7 @@ import com.microsoft.java.test.runner.common.ITestLauncher;
 import com.microsoft.java.test.runner.exceptions.ParameterException;
 import com.microsoft.java.test.runner.junit4.JUnit4Launcher;
 import com.microsoft.java.test.runner.junit5.CustomizedConsoleLauncher;
+import com.microsoft.java.test.runner.spock.SpockLauncher;
 import com.microsoft.java.test.runner.testng.TestNGLauncher;
 
 import java.util.Arrays;
@@ -24,6 +25,7 @@ import java.util.Map;
 public class Launcher {
     private static final String JUNIT = "junit";
     private static final String JUNIT5 = "junit5";
+    private static final String SPOCK = "spock";
     private static final String TESTNG = "testng";
 
     private static final Map<String, ITestLauncher> launcherMap;
@@ -32,6 +34,7 @@ public class Launcher {
         launcherMap = new HashMap<>();
         launcherMap.put(JUNIT, new JUnit4Launcher());
         launcherMap.put(JUNIT5, new CustomizedConsoleLauncher());
+        launcherMap.put(SPOCK, new SpockLauncher());
         launcherMap.put(TESTNG, new TestNGLauncher());
     }
 

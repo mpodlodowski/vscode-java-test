@@ -16,6 +16,7 @@ import { ITestRunner } from './ITestRunner';
 import { JUnit4Runner } from './junit4Runner/Junit4Runner';
 import { JUnit5Runner } from './junit5Runner/JUnit5Runner';
 import { ITestResult } from './models';
+import { SpockRunner } from './spockRunner/SpockRunner';
 import { TestNGRunner } from './testngRunner/TestNGRunner';
 
 class RunnerExecutor {
@@ -143,6 +144,8 @@ class RunnerExecutor {
                 return new JUnit5Runner(this._javaHome, this._context.storagePath, this._context.extensionPath);
             case TestKind.TestNG:
                 return new TestNGRunner(this._javaHome, this._context.storagePath, this._context.extensionPath);
+            case TestKind.Spock:
+                return new SpockRunner(this._javaHome, this._context.storagePath, this._context.extensionPath);
             default:
                 return undefined;
         }

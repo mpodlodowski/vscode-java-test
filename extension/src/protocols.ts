@@ -40,5 +40,6 @@ export enum TestLevel {
 export enum TestKind {
     JUnit,
     JUnit5,
+    Spock,
     TestNG,
 }
